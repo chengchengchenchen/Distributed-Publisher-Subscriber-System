@@ -8,7 +8,7 @@ public class HelloClient {
     public static void main(String[] args) {
         try {
             // 获取本地的 RMI 注册表
-            Registry registry = LocateRegistry.getRegistry("localhost", 1099);
+            Registry registry = LocateRegistry.getRegistry("localhost", 1100);
 
             // 查找远程对象
             HelloInterface hello = (HelloInterface) registry.lookup("HelloService");

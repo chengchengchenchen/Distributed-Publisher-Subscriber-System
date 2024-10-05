@@ -1,13 +1,10 @@
 package Directory;
 
 import java.rmi.RemoteException;
-import java.rmi.server.UnicastRemoteObject;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
-import java.util.ArrayList;
-import java.util.List;
 
-import Broker.BrokerInterface;
+import Utils.Constant;
 import lombok.extern.slf4j.Slf4j;
 
 // Directory Service Server
@@ -17,7 +14,7 @@ public class DirectoryServiceServer {
     public static void main(String[] args) {
         try {
             DirectoryService directoryService = new DirectoryServiceImpl();
-            Registry registry = LocateRegistry.createRegistry(1099);
+            Registry registry = LocateRegistry.createRegistry(Constant.DIRECTORY_PORT);
             registry.rebind("DirectoryService", directoryService);
             log.info("Directory Service is running...");
         } catch (RemoteException e) {

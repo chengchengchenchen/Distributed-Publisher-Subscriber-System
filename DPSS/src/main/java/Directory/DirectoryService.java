@@ -4,8 +4,10 @@ import java.rmi.Remote;
 import java.rmi.RemoteException;
 import java.util.List;
 
+import Utils.Broker;
+
 // Directory Service Interface
 public interface DirectoryService extends Remote {
-    void registerBroker(String brokerId, String brokerAddress) throws RemoteException;
-    List<String> getRegisteredBrokers() throws RemoteException;
+    void registerBroker(Broker broker) throws RemoteException;
+    List<Broker> getRegisteredBrokers() throws RemoteException;
 }

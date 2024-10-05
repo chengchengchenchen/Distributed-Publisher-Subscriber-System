@@ -11,7 +11,7 @@ public class HelloServer {
             HelloImpl hello = new HelloImpl();
 
             // 创建本地 RMI 注册表，默认端口 1099
-            Registry registry = LocateRegistry.createRegistry(1099);
+            Registry registry = LocateRegistry.createRegistry(1100);
 
             // 将远程对象绑定到注册表中
             registry.rebind("HelloService", hello);

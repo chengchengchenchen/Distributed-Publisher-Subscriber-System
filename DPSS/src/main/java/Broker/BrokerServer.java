@@ -1,5 +1,6 @@
 package Broker;
 
+import Utils.Constant;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,20 +14,20 @@ import java.rmi.registry.Registry;
 public class BrokerServer {
     public static void main(String[] args) {
         if (args.length < 3) {
-            log.error("Usage: java BrokerServer <brokerId> <brokerAddress> <directoryHost> <directoryPort>");
+            log.error("Usage: java BrokerServer <brokerName> <brokerAddress>");
             return;
         }
 
-        String brokerId = args[0];
+        String brokerName = args[0];
         String brokerAddress = args[1];
-        String directoryHost = args[2];
-        int directoryPort = Integer.parseInt(args[3]);
+        String directoryHost = Constant.HOST;
+        int directoryPort = Constant.DIRECTORY_PORT;
 
         try {
-            BrokerImpl broker = new BrokerImpl(brokerId, brokerAddress);
+            BrokerImpl broker = new BrokerImpl(brokerName, brokerAddress);
             Registry registry = LocateRegistry.createRegistry(Integer.parseInt(brokerAddress.split(":")[1]));
-            registry.rebind(brokerId, broker);
-            log.info("Broker {} is running at {}", brokerId, brokerAddress);
+            registry.rebind(brokerName, broker);
+            log.info("Broker {} is running at {}", brokerName, brokerAddress);
 
             // Register with Directory Service
             broker.registerWithDirectoryService(directoryHost, directoryPort);
