@@ -2,10 +2,13 @@ package Utils;
 
 import lombok.Getter;
 
+import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Set;
 @Getter
-public class Subscriber {
+public class Subscriber implements Serializable {
+    private static final long serialVersionUID = 1L;
+
     private final String name;
     private final String host;
     private final int port;

@@ -10,9 +10,9 @@ public class PublisherImpl extends UnicastRemoteObject implements PublisherInter
         super();
     }
 
-    // Heartbeat
     @Override
-    public void heartbeat() throws RemoteException {
-        log.info("Heartbeat sent from publisher.");
+    public boolean isAlive() throws RemoteException {
+        log.info("Publisher is alive.");
+        return true;
     }
 }

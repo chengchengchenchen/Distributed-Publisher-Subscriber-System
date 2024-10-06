@@ -1,17 +1,25 @@
 package Test;
 
+import java.io.IOException;
+import java.net.ServerSocket;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
+import java.rmi.server.UnicastRemoteObject;
 
 public class HelloServer {
     public static void main(String[] args) {
         try {
             // 创建远程对象实例
             HelloImpl hello = new HelloImpl();
-
-            // 创建本地 RMI 注册表，默认端口 1099
-            Registry registry = LocateRegistry.createRegistry(1100);
+            int assignedPort;
+            try (ServerSocket serverSocket = new ServerSocket(0)) {
+                assignedPort = serverSocket.getLocalPort();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            System.out.println(assignedPort);
+            Registry registry = LocateRegistry.createRegistry(assignedPort);
 
             // 将远程对象绑定到注册表中
             registry.rebind("HelloService", hello);

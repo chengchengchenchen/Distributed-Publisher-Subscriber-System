@@ -16,7 +16,7 @@ public class DirectoryServiceServer {
             DirectoryService directoryService = new DirectoryServiceImpl();
             Registry registry = LocateRegistry.createRegistry(Constant.DIRECTORY_PORT);
             registry.rebind("DirectoryService", directoryService);
-            log.info("Directory Service is running...");
+            log.info("Directory Service is running... on {}:{}", Constant.DIRECTORY_HOST, Constant.DIRECTORY_PORT);
         } catch (RemoteException e) {
             log.error("Failed to start Directory Service", e);
         }

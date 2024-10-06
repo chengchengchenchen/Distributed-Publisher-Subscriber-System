@@ -2,8 +2,12 @@ package Utils;
 
 import lombok.Getter;
 
+import java.io.Serializable;
+
 @Getter
-public class Broker {
+public class Broker implements Serializable {
+    private static final long serialVersionUID = 1L;
+
     private final String name;
     private final String host;
     private final int port;

@@ -4,5 +4,5 @@ import java.rmi.Remote;
 import java.rmi.RemoteException;
 
 public interface PublisherInterface extends Remote {
-    void heartbeat() throws RemoteException;
+    boolean isAlive() throws RemoteException;
 }
