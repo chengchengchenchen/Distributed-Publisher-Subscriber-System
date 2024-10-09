@@ -12,7 +12,7 @@ public class PublisherImpl extends UnicastRemoteObject implements PublisherInter
 
     @Override
     public boolean isAlive() throws RemoteException {
-        log.info("Publisher is alive.");
+        //log.info("Publisher is alive.");
         return true;
     }
 }

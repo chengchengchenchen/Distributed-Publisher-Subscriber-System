@@ -4,38 +4,35 @@ import lombok.Getter;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.time.format.DateTimeFormatter;
 @Getter
 public class Message implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private final Topic topic;
-    private final String messageId;
     private final String payload;
-    private final List<String> processedBrokers;
     private final LocalDateTime timestamp;
 
-    public Message(Topic topic, String payload, int ttl) {
+    public Message(Topic topic, String payload) {
         this.topic = topic;
-        this.messageId = UUID.randomUUID().toString();  // 生成唯一消息ID
         this.payload = payload;
-        this.processedBrokers = new ArrayList<>();
-        this.timestamp = LocalDateTime.now();  // 发布时的时间戳
-    }
-
-    public void addProcessedBroker(String brokerId) {
-        this.processedBrokers.add(brokerId);
+        this.timestamp = LocalDateTime.now();
     }
 
     @Override
     public String toString() {
         return "Message{" +
-                "messageId='" + messageId + '\'' +
+                "topic='" + topic + '\'' +
                 ", payload='" + payload + '\'' +
-                ", processedBrokers=" + processedBrokers +
                 ", timestamp=" + timestamp +
                 '}';
     }
+    public String getFormattedMessage() {
+        return String.format("[%s] [%s:%s] [%s]",
+                timestamp.format(DateTimeFormatter.ofPattern("dd/MM HH:mm:ss")),
+                topic.getTopicId(),
+                topic.getName(),
+                payload);
+    }
+
 }

@@ -1,17 +1,21 @@
 package Publisher;
 
 import Directory.DirectoryService;
+import Broker.BrokerInterface;
 import Utils.Broker;
 import Utils.Constant;
 import Utils.Publisher;
 import Utils.Topic;
+import Utils.Message;
 import lombok.extern.slf4j.Slf4j;
 
 
 import java.net.ServerSocket;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 
 @Slf4j
@@ -61,8 +65,11 @@ public class PublisherServer {
             Registry registryPublisher = LocateRegistry.createRegistry(assignedPort);
             registryPublisher.rebind(publisherName, publisherImpl);
 
+            // Connect to Selected Broker
+            Registry registryBroker = LocateRegistry.getRegistry(selectedBroker.getHost(), selectedBroker.getPort());
+            BrokerInterface brokerStub = (BrokerInterface) registryBroker.lookup(selectedBroker.getName());
             Publisher publisher = new Publisher(publisherName, Constant.DIRECTORY_HOST, assignedPort);
-            //publisher.connectToBroker(selectedBroker.getHost() + ":" + selectedBroker.getPort());
+            brokerStub.newPublisherConnected(publisher);
 
             // Command loop
             while (true) {
@@ -71,6 +78,8 @@ public class PublisherServer {
                 String command = scanner.nextLine();
                 String[] parts = command.split(" ", 3);
                 String action = parts[0].toLowerCase();
+                String topicId;
+                String topicName;
 
                 switch (action) {
                     case "create":
@@ -78,11 +87,15 @@ public class PublisherServer {
                             System.out.println("Usage: create {topic_id} {topic_name}");
                             continue;
                         }
-                        String topicId = parts[1];
-                        String topicName = parts[2];
-                        Topic newTopic = new Topic(topicId, topicName);
-                        //publisher.addTopic(newTopic);
-                        System.out.println("Created topic: " + topicName);
+                        topicId = parts[1];
+                        topicName = parts[2];
+                        Topic newTopic = new Topic(topicId, topicName, publisher);
+                        boolean isCreated = brokerStub.createTopic(publisher, newTopic);
+                        if (isCreated) {
+                            log.info("Topic created successfully: " + topicName);
+                        } else {
+                            log.info("Failed to create topic: " + topicName);
+                        }
                         break;
                     case "publish":
                         if (parts.length < 3) {
@@ -90,29 +103,74 @@ public class PublisherServer {
                             continue;
                         }
                         topicId = parts[1];
-                        String message = parts[2];
-                        if (message.length() > 100) {
-                            System.out.println("Message exceeds the 100 character limit.");
+                        String payload = parts[2];
+                        if (payload.length() > 100) {
+                            log.warn("Message exceeds the 100 character limit.");
                             continue;
                         }
-                        // Logic to publish the message to the broker goes here
-                        System.out.println("Published message to topic ID: " + topicId);
+
+                        // check whether this publisher has the topic
+                        Map<Topic, Integer> publisherTopics = brokerStub.getTopicDetails(publisher, new ArrayList<>());
+                        Topic foundTopic = publisherTopics.keySet().stream()
+                                .filter(t -> t.getTopicId().equals(topicId))
+                                .findFirst()
+                                .orElse(null);
+
+                        if (foundTopic != null) {
+                            Message message = new Message(foundTopic, payload);
+                            brokerStub.publishMessage(publisher, message, new ArrayList<>());
+                            log.info("Message published to topic ID: " + topicId);
+                        } else {
+                            log.warn("Publisher does not own topic ID: " + topicId);
+                        }
                         break;
                     case "show":
                         if (parts.length < 2) {
-                            System.out.println("Usage: show {topic_id}");
-                            continue;
+                            Map<Topic, Integer> allTopicDetails = brokerStub.getTopicDetails(publisher, new ArrayList<>());
+                            if (allTopicDetails.isEmpty()) {
+                                log.info("No subscribers");
+                            } else {
+                                for (Map.Entry<Topic, Integer> entry : allTopicDetails.entrySet()) {
+                                    Topic topic = entry.getKey();
+                                    int subscriberCount = entry.getValue();
+                                    log.info("[{}] [{}] [{}]", topic.getTopicId(), topic.getName(), subscriberCount);
+                                }
+                            }
+                        } else {
+                            // show specified topic
+                            topicId = parts[1];
+                            Map<Topic, Integer> topicDetails = brokerStub.getTopicDetails(publisher, new ArrayList<>());
+                            Topic matchedTopic = null;
+                            int subscriberCount = -1;
+
+                            for (Map.Entry<Topic, Integer> entry : topicDetails.entrySet()) {
+                                if (entry.getKey().getTopicId().equals(topicId)) {
+                                    matchedTopic = entry.getKey();
+                                    subscriberCount = entry.getValue();
+                                    break;
+                                }
+                            }
+
+                            if (matchedTopic == null) {
+                                log.error("Not found Topic ID: " + topicId);
+                            } else {
+                                log.info("[{}}] [{}] [{}]", matchedTopic.getTopicId(), matchedTopic.getName(), subscriberCount);
+                            }
                         }
-                        topicId = parts[1];
-                        // Logic to get subscriber count for the topic goes here
-                        System.out.println("Showing subscriber count for topic ID: " + topicId);
                         break;
                     case "delete":
                         if (parts.length < 2) {
                             System.out.println("Usage: delete {topic_id}");
                             continue;
                         }
-                        //publisher.removeTopic(topicToDelete);
+                        topicId = parts[1];
+
+                        boolean isDeleted = brokerStub.deleteTopic(publisher, new Topic(topicId), new ArrayList<>());
+                        if (isDeleted) {
+                            log.info("Topic deleted successfully: " + topicId);
+                        } else {
+                            log.info("Failed to delete topic: " + topicId);
+                        }
                         break;
                     case "exit":
                         log.info("Exiting...");

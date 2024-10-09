@@ -26,6 +26,7 @@ class DirectoryServiceImpl extends UnicastRemoteObject implements DirectoryServi
         if (brokers.stream().noneMatch(b -> b.getName().equals(broker.getName()))) {
             brokers.add(broker);
             log.info("Broker registered: {}", broker);
+            notifyExistingBrokers(broker);
         } else {
             log.warn("Broker with name {} is already registered", broker.getName());
         }

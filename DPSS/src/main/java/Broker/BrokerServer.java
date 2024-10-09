@@ -23,13 +23,13 @@ public class BrokerServer {
             String brokerHost = brokerAddress.split(":")[0];
             int brokerPort = Integer.parseInt(brokerAddress.split(":")[1]);
 
-            BrokerImpl broker = new BrokerImpl(new Broker(brokerName, brokerHost, brokerPort));
+            BrokerImpl brokerImpl = new BrokerImpl(new Broker(brokerName, brokerHost, brokerPort));
             Registry registry = LocateRegistry.createRegistry(brokerPort);
-            registry.rebind(brokerName, broker);
+            registry.rebind(brokerName, brokerImpl);
             log.info("Broker {} is running at {}", brokerName, brokerAddress);
 
             // Register with Directory Service
-            broker.registerWithDirectoryService(Constant.DIRECTORY_HOST, Constant.DIRECTORY_PORT);
+            brokerImpl.registerWithDirectoryService(Constant.DIRECTORY_HOST, Constant.DIRECTORY_PORT);
         } catch (RemoteException e) {
             log.error("Failed to start Broker", e);
         }

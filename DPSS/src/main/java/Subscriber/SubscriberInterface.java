@@ -1,11 +1,13 @@
 package Subscriber;
 
+import Utils.Message;
 import Utils.Topic;
 
 import java.rmi.Remote;
 import java.rmi.RemoteException;
 
 public interface SubscriberInterface extends Remote {
-    void heartbeat() throws RemoteException;
-    void noticeTopicDeleted(Topic topic);
+    boolean isAlive() throws RemoteException;
+    void notifyTopicDeleted(Topic topic) throws RemoteException;
+    void receiveMessage(Message message) throws RemoteException;
 }
