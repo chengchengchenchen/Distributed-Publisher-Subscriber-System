@@ -11,23 +11,23 @@ import Utils.*;
 
 // Broker Interface
 public interface BrokerInterface extends Remote {
+
     // Broker Service
-    void newBrokerRegistered(Broker broker) throws RemoteException;
+    void  newBrokerRegistered(Broker broker) throws RemoteException;
 
     // Publisher Service
     void newPublisherConnected(Publisher publisher) throws RemoteException;
     boolean createTopic(Publisher publisher, Topic topic) throws RemoteException;
-    Map<Topic, Integer> getTopicDetails(Publisher publisher, List<String> processedBrokers) throws RemoteException;
-    void publishMessage(Publisher publisher, Message message, List<String> processedBrokers) throws RemoteException;
-    boolean deleteTopic(Publisher publisher, Topic topic, List<String> processedBrokers) throws RemoteException;
+    Map<Topic, Integer> getTopicDetails(Publisher publisher, String requestID) throws RemoteException;
+    void publishMessage(Publisher publisher, Message message, String requestID) throws RemoteException;
+    boolean deleteTopic(Publisher publisher, Topic topic, String requestID) throws RemoteException;
 
     // Subscriber Service
     void newSubscriberConnected(Subscriber subscriber) throws RemoteException;
-    Map<Topic, String> listAllTopics(List<String> processedBrokers) throws RemoteException;
+    Set<Topic> listAllTopics(String requestID) throws RemoteException;
     boolean subscribeToTopic(Subscriber subscriber, String topicId) throws RemoteException;
     Set<Topic> getSubscribedTopics(Subscriber subscriber) throws RemoteException;
     boolean unsubscribeFromTopic(Subscriber subscriber, String topicId) throws RemoteException;
-
 
 }
 

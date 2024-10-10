@@ -74,18 +74,17 @@ public class SubscriberServer {
 
                 switch (action) {
                     case "list":
-                        Map<Topic, String> allTopics = brokerStub.listAllTopics(new ArrayList<>());
+                        Set<Topic> allTopics = brokerStub.listAllTopics(System.currentTimeMillis() + subscriber.getName());
                         if (allTopics.isEmpty()) {
                             log.info("No available topics.");
                         } else {
-                            allTopics.forEach((topic, publisher) -> {
-                                log.info("[{}] [{}] [{}]", topic.getTopicId(), topic.getName(), publisher);
+                            allTopics.forEach((topic) -> {
+                                log.info("[{}] [{}] [{}]", topic.getTopicId(), topic.getName(), topic.getPublisher().getName());
                             });
                         }
                         break;
 
                     case "sub":
-                        // 订阅 Topic
                         if (parts.length < 2) {
                             System.out.println("Usage: sub {topic_id}");
                             continue;

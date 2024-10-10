@@ -13,10 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.net.ServerSocket;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Scanner;
+import java.util.*;
 
 @Slf4j
 public class PublisherServer {
@@ -110,7 +107,7 @@ public class PublisherServer {
                         }
 
                         // check whether this publisher has the topic
-                        Map<Topic, Integer> publisherTopics = brokerStub.getTopicDetails(publisher, new ArrayList<>());
+                        Map<Topic, Integer> publisherTopics = brokerStub.getTopicDetails(publisher, System.currentTimeMillis() + publisher.getName());
                         Topic foundTopic = publisherTopics.keySet().stream()
                                 .filter(t -> t.getTopicId().equals(topicId))
                                 .findFirst()
@@ -118,7 +115,7 @@ public class PublisherServer {
 
                         if (foundTopic != null) {
                             Message message = new Message(foundTopic, payload);
-                            brokerStub.publishMessage(publisher, message, new ArrayList<>());
+                            brokerStub.publishMessage(publisher, message, System.currentTimeMillis() + publisher.getName());
                             log.info("Message published to topic ID: " + topicId);
                         } else {
                             log.warn("Publisher does not own topic ID: " + topicId);
@@ -126,7 +123,7 @@ public class PublisherServer {
                         break;
                     case "show":
                         if (parts.length < 2) {
-                            Map<Topic, Integer> allTopicDetails = brokerStub.getTopicDetails(publisher, new ArrayList<>());
+                            Map<Topic, Integer> allTopicDetails = brokerStub.getTopicDetails(publisher, System.currentTimeMillis() + publisher.getName());
                             if (allTopicDetails.isEmpty()) {
                                 log.info("No subscribers");
                             } else {
@@ -139,7 +136,7 @@ public class PublisherServer {
                         } else {
                             // show specified topic
                             topicId = parts[1];
-                            Map<Topic, Integer> topicDetails = brokerStub.getTopicDetails(publisher, new ArrayList<>());
+                            Map<Topic, Integer> topicDetails = brokerStub.getTopicDetails(publisher, System.currentTimeMillis() + publisher.getName());
                             Topic matchedTopic = null;
                             int subscriberCount = -1;
 
@@ -165,7 +162,7 @@ public class PublisherServer {
                         }
                         topicId = parts[1];
 
-                        boolean isDeleted = brokerStub.deleteTopic(publisher, new Topic(topicId), new ArrayList<>());
+                        boolean isDeleted = brokerStub.deleteTopic(publisher, new Topic(topicId), System.currentTimeMillis() + publisher.getName());
                         if (isDeleted) {
                             log.info("Topic deleted successfully: " + topicId);
                         } else {

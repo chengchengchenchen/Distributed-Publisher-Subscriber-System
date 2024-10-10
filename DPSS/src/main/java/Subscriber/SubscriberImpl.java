@@ -15,13 +15,13 @@ public class SubscriberImpl extends UnicastRemoteObject implements SubscriberInt
     // Heartbeat
     @Override
     public boolean isAlive() throws RemoteException{
-        log.info("Subscriber is alive.");
+        //log.info("Subscriber is alive.");
         return true;
     }
 
     @Override
     public void notifyTopicDeleted(Topic topic) throws RemoteException{
-        log.info("Topic deleted: " + topic);
+        log.info("Topic [{}] deleted.", topic.getTopicId());
     }
 
     @Override

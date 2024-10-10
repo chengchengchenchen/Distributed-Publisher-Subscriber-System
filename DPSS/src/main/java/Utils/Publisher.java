@@ -31,8 +31,8 @@ public class Publisher implements Serializable {
 
     @Override
     public String toString() {
-        return "SubscriberInfo{" +
-                "subscriberName='" + name + '\'' +
+        return "PublisherInfo{" +
+                "publisherName='" + name + '\'' +
                 ", host='" + host + '\'' +
                 ", port=" + port +
                 ", topics=" + topics +

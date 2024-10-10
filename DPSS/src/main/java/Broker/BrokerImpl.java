@@ -21,17 +21,19 @@ public class BrokerImpl extends UnicastRemoteObject implements BrokerInterface {
     private final List<Subscriber> connectedSubscribers;
     private final List<Publisher> connectedPublishers;
     private final List<Broker> connectedBrokers;
-    private final long heartbeatInterval = 5000L; // heartbeat per 5 sec
+    private final long heartbeatInterval = 1000L; // heartbeat per 5 sec
+    private final Set<String> processedRequests;
     public BrokerImpl(Broker broker) throws RemoteException {
         super();
         this.broker = broker;
         this.connectedPublishers = new ArrayList<>();
         this.connectedSubscribers = new ArrayList<>();
         this.connectedBrokers = new ArrayList<>();
+        this.processedRequests = new HashSet<>();
     }
 
     @Override
-    public void newBrokerRegistered(Broker broker) throws RemoteException {
+    public synchronized void newBrokerRegistered(Broker broker) throws RemoteException {
         log.info("New broker registered: {}", broker.getName());
         if (connectedBrokers.stream().noneMatch(b -> b.getName().equals(broker.getName()))) {
             connectedBrokers.add(broker);
@@ -40,7 +42,7 @@ public class BrokerImpl extends UnicastRemoteObject implements BrokerInterface {
     }
 
     @Override
-    public void newPublisherConnected(Publisher publisher) throws RemoteException {
+    public synchronized void newPublisherConnected(Publisher publisher) throws RemoteException {
         log.info("New publisher connected: {}", publisher.getName());
 
         if (connectedPublishers.stream().noneMatch(p -> p.getName().equals(publisher.getName()))) {
@@ -65,7 +67,7 @@ public class BrokerImpl extends UnicastRemoteObject implements BrokerInterface {
                     PublisherInterface publisherStub = (PublisherInterface) registry.lookup(publisher.getName());
 
                     if (publisherStub.isAlive()) {
-                        log.info("Publisher {} is alive", publisher.getName());
+                        //log.info("Publisher {} is alive", publisher.getName());
                     } else {
                         log.warn("Publisher {} did not respond to heartbeat, removing...", publisher.getName());
                         handlePublisherCrash(publisher);
@@ -93,7 +95,7 @@ public class BrokerImpl extends UnicastRemoteObject implements BrokerInterface {
 
         for (Topic topic : topicsToRemove) {
             try {
-                deleteTopic(publisher, topic, new ArrayList<>());
+                deleteTopic(publisher, topic, System.currentTimeMillis() + publisher.getName() + topic.getTopicId());
             } catch (RemoteException e) {
                 log.error("Failed to delete topic {} for publisher {}", topic.getTopicId(), publisher.getName(), e);
             }
@@ -103,9 +105,9 @@ public class BrokerImpl extends UnicastRemoteObject implements BrokerInterface {
 
         log.info("Publisher {} and all its topics have been removed", publisher.getName());
     }
-    // Publisher Create Topic
+
     @Override
-    public boolean createTopic(Publisher publisher, Topic topic) throws RemoteException {
+    public synchronized boolean createTopic(Publisher publisher, Topic topic) throws RemoteException {
         log.info("Publisher {} is creating topic {}", publisher.getName(), topic.getName());
 
         for (Publisher connectedPublisher : connectedPublishers) {
@@ -124,32 +126,38 @@ public class BrokerImpl extends UnicastRemoteObject implements BrokerInterface {
         return false;
     }
 
-    //TODO: fix
     @Override
-    public Map<Topic, Integer> getTopicDetails(Publisher publisher, List<String> processedBrokers) throws RemoteException {
-        String brokerName = broker.getName();
-
+    public Map<Topic, Integer> getTopicDetails(Publisher publisher, String requestID) throws RemoteException {
         // check to avoid loop
-        if (processedBrokers.contains(brokerName)) {
-            log.info("Broker {} already processed this request, skipping.", brokerName);
-            return new HashMap<>();
+        synchronized (processedRequests) {
+            if (processedRequests.contains(requestID)) {
+                log.info("Broker {} already processed this request {}", broker.getName(), requestID);
+                return new HashMap<>();
+            }
+            processedRequests.add(requestID);
         }
 
-        processedBrokers.add(brokerName);
         Map<Topic, Integer> topicDetails = new HashMap<>();
 
-        for (Publisher connectedPublisher : connectedPublishers) {
-            if (connectedPublisher.getName().equals(publisher.getName())) {
-                for (Topic topic : connectedPublisher.getTopics()) {
-                    int count = 0;
-                    for (Subscriber subscriber : connectedSubscribers) {
-                        if (subscriber.getTopics().contains(topic)) {
-                            count++;
-                        }
+        // initialize
+        synchronized (connectedPublishers) {
+            for (Publisher connectedPublisher : connectedPublishers) {
+                if (connectedPublisher.getName().equals(publisher.getName())) {
+                    for (Topic topic : connectedPublisher.getTopics()) {
+                        topicDetails.put(topic, 0);  // Initialize all Topic counts to 0
                     }
-                    topicDetails.put(topic, count);
+                    break;
                 }
-                break;
+            }
+        }
+
+        synchronized (connectedSubscribers) {
+            for (Subscriber subscriber : connectedSubscribers) {
+                for (Topic topic : subscriber.getTopics()) {
+                    if (topic.getPublisher().getName().equals(publisher.getName())) {
+                        topicDetails.merge(topic, 1, Integer::sum);
+                    }
+                }
             }
         }
 
@@ -158,17 +166,16 @@ public class BrokerImpl extends UnicastRemoteObject implements BrokerInterface {
             try {
                 Registry registry = LocateRegistry.getRegistry(connectedBroker.getHost(), connectedBroker.getPort());
                 BrokerInterface brokerStub = (BrokerInterface) registry.lookup(connectedBroker.getName());
-                Map<Topic, Integer> otherBrokerDetails = brokerStub.getTopicDetails(publisher, processedBrokers);
+                Map<Topic, Integer> otherBrokerDetails = brokerStub.getTopicDetails(publisher, requestID);
 
                 for (Map.Entry<Topic, Integer> entry : otherBrokerDetails.entrySet()) {
                     Topic topic = entry.getKey();
                     int count = entry.getValue();
-
                     // If the topic already exists, sum the subscriber counts. Otherwise, add it.
                     topicDetails.merge(topic, count, Integer::sum);
                 }
             } catch (Exception e) {
-                log.error("Failed to forward delete topic operation to broker {}", connectedBroker.getName(), e);
+                log.error("Failed to forward operation to broker {}", connectedBroker.getName(), e);
             }
         }
 
@@ -176,114 +183,115 @@ public class BrokerImpl extends UnicastRemoteObject implements BrokerInterface {
     }
 
     @Override
-    public void publishMessage(Publisher publisher, Message message, List<String> processedBrokers) throws RemoteException {
-        String brokerName = broker.getName();
-        if (processedBrokers.contains(brokerName)) {
-            return;
+    public void publishMessage(Publisher publisher, Message message, String requestID) throws RemoteException {
+        // check to avoid loop
+        synchronized (processedRequests) {
+            if (processedRequests.contains(requestID)) {
+                log.info("Broker {} already processed this request {}", broker.getName(), requestID);
+                return;
+            }
+            processedRequests.add(requestID);
         }
-        processedBrokers.add(brokerName);
 
-        for (Publisher connectedPublisher : connectedPublishers) {
-            if (connectedPublisher.getName().equals(publisher.getName())) {
-                for (Topic topic : connectedPublisher.getTopics()) {
-                    if (topic.getTopicId().equals(message.getTopic().getTopicId())) {
-                        // Publish message to subscribers
-                        for (Subscriber subscriber : connectedSubscribers) {
-                            if (subscriber.getTopics().contains(topic)) {
-                                try {
-                                    Registry registry = LocateRegistry.getRegistry(subscriber.getHost(), subscriber.getPort());
-                                    SubscriberInterface subscriberStub = (SubscriberInterface) registry.lookup(subscriber.getName());
-                                    subscriberStub.receiveMessage(message);
-                                    log.info("Message sent to subscriber {} for topic {}", subscriber.getName(), topic.getName());
-                                } catch (Exception e) {
-                                    log.error("Failed to send message to subscriber {}", subscriber.getName(), e);
-                                }
-                            }
-                        }
-
-                        // broadcast
-                        for (Broker connectedBroker : connectedBrokers) {
-                            try {
-                                Registry registry = LocateRegistry.getRegistry(connectedBroker.getHost(), connectedBroker.getPort());
-                                BrokerInterface brokerStub = (BrokerInterface) registry.lookup(connectedBroker.getName());
-                                brokerStub.publishMessage(publisher, message, processedBrokers);
-                            } catch (Exception e) {
-                                log.error("Failed to broadcast message to broker {}", connectedBroker.getName(), e);
-                            }
-                        }
-                        return;
+        for (Subscriber subscriber : connectedSubscribers) {
+            for (Topic topic : subscriber.getTopics()) {
+                // check
+                if (topic.getPublisher().getName().equals(publisher.getName()) && topic.getTopicId().equals(message.getTopic().getTopicId())) {
+                    try {
+                        Registry registry = LocateRegistry.getRegistry(subscriber.getHost(), subscriber.getPort());
+                        SubscriberInterface subscriberStub = (SubscriberInterface) registry.lookup(subscriber.getName());
+                        subscriberStub.receiveMessage(message);
+                        log.info("Message sent to subscriber {} for topic {}", subscriber.getName(), topic.getName());
+                    } catch (Exception e) {
+                        log.error("Failed to send message to subscriber {}", subscriber.getName(), e);
                     }
                 }
             }
         }
 
-        log.warn("Publisher {} does not have topic {}", publisher.getName(), message.getTopic().getTopicId());
+        // broadcast
+        for (Broker connectedBroker : connectedBrokers) {
+            try {
+                Registry registry = LocateRegistry.getRegistry(connectedBroker.getHost(), connectedBroker.getPort());
+                BrokerInterface brokerStub = (BrokerInterface) registry.lookup(connectedBroker.getName());
+                brokerStub.publishMessage(publisher, message, requestID);
+            } catch (Exception e) {
+                log.error("Failed to broadcast message to broker {}", connectedBroker.getName(), e);
+            }
+        }
+
+        log.info("Message published for topic {}", message.getTopic().getTopicId());
     }
 
     // Publisher Delete Topic
     @Override
-    public boolean deleteTopic(Publisher publisher, Topic topic, List<String> processedBrokers) throws RemoteException {
-        String brokerName = broker.getName();
-
+    public boolean deleteTopic(Publisher publisher, Topic topic, String requestID) throws RemoteException {
         // check to avoid loop
-        if (processedBrokers.contains(brokerName)) {
-            log.info("Broker {} already processed this request, skipping.", brokerName);
-            return false;
+        synchronized (processedRequests) {
+            if (processedRequests.contains(requestID)) {
+                log.info("Broker {} already processed this request {}", broker.getName(), requestID);
+                return false;
+            }
+            processedRequests.add(requestID);
         }
 
-        // add current Broker into processedBrokers
-        processedBrokers.add(brokerName);
-        log.info("Publisher {} is deleting topic {}", publisher.getName(), topic.getName());
+        log.info("Publisher {} is deleting topic {}", publisher.getName(), topic.getTopicId());
 
-        for (Publisher connectedPublisher : connectedPublishers) {
-            if (connectedPublisher.getName().equals(publisher.getName()) &&
-                    connectedPublisher.getHost().equals(publisher.getHost()) &&
-                    connectedPublisher.getPort() == publisher.getPort()) {
-
-                // Update Publisher's Topic list
-                connectedPublisher.removeTopic(topic);
-
-                // Remove the topic from all connected subscribers
-                for (Subscriber subscriber : connectedSubscribers) {
-                    if (subscriber.getTopics().contains(topic)) {
-                        subscriber.removeTopic(topic);
-                        log.info("Subscriber {} unsubscribed from topic id: {}", subscriber.getName(), topic.getTopicId());
-
-                        // Notify subscriber about topic deletion via RMI
-                        try {
-                            Registry registry = LocateRegistry.getRegistry(subscriber.getHost(), subscriber.getPort());
-                            SubscriberInterface subscriberStub = (SubscriberInterface) registry.lookup(subscriber.getName());
-                            subscriberStub.notifyTopicDeleted(topic);
-                            log.info("Subscriber {} notified about topic id: {} deletion", subscriber.getName(), topic.getTopicId());
-                        } catch (Exception e) {
-                            log.error("Failed to notify subscriber {} about topic id: {} deletion", subscriber.getName(), topic.getTopicId(), e);
-                        }
-                    }
+        // handle publisher
+        synchronized (connectedPublishers) {
+            for (Publisher connectedPublisher : connectedPublishers) {
+                if (connectedPublisher.getName().equals(publisher.getName())) {
+                    connectedPublisher.removeTopic(topic);
+                    log.info("Topic {} removed from Publisher {}", topic.getTopicId(), publisher.getName());
+                    break;
                 }
-
-                log.info("All subscribers unsubscribed from topic {}.", topic.getTopicId());
-
-                // Broadcast delete operation to other brokers with updated processedBrokers list
-                for (Broker connectedBroker : connectedBrokers) {
-                    try {
-                        Registry registry = LocateRegistry.getRegistry(connectedBroker.getHost(), connectedBroker.getPort());
-                        BrokerInterface brokerStub = (BrokerInterface) registry.lookup(connectedBroker.getName());
-                        brokerStub.deleteTopic(publisher, topic, processedBrokers);
-                        log.info("Delete topic id: {} operation forwarded to broker {}", topic.getTopicId(), connectedBroker.getName());
-                    } catch (Exception e) {
-                        log.error("Failed to forward delete topic operation to broker {}", connectedBroker.getName(), e);
-                    }
-                }
-                return true;
             }
         }
 
-        log.warn("Publisher {} not found in connected publishers", publisher.getName());
-        return false;
+        // handle subscriber
+        Set<Subscriber> subscribersToUnsubscribe = new HashSet<>();
+        synchronized (connectedSubscribers) {
+            for (Subscriber subscriber : connectedSubscribers) {
+                for (Topic subscribedTopic : subscriber.getTopics()) {
+
+                    if (subscribedTopic.getTopicId().equals(topic.getTopicId())
+                            && subscribedTopic.getPublisher().getName().equals(publisher.getName())) {
+                        subscribersToUnsubscribe.add(subscriber);
+                    }
+                }
+            }
+        }
+        for (Subscriber subscriber : subscribersToUnsubscribe) {
+            subscriber.removeTopic(topic);
+            log.info("Subscriber {} unsubscribed from topic id: {}", subscriber.getName(), topic.getTopicId());
+            // notify
+            try {
+                Registry registry = LocateRegistry.getRegistry(subscriber.getHost(), subscriber.getPort());
+                SubscriberInterface subscriberStub = (SubscriberInterface) registry.lookup(subscriber.getName());
+                subscriberStub.notifyTopicDeleted(topic);
+                log.info("Subscriber {} notified about topic id: {} deletion", subscriber.getName(), topic.getTopicId());
+            } catch (Exception e) {
+                log.error("Failed to notify subscriber {} about topic id: {} deletion", subscriber.getName(), topic.getTopicId(), e);
+            }
+        }
+
+
+        // broadcast
+        for (Broker connectedBroker : connectedBrokers) {
+            try {
+                Registry registry = LocateRegistry.getRegistry(connectedBroker.getHost(), connectedBroker.getPort());
+                BrokerInterface brokerStub = (BrokerInterface) registry.lookup(connectedBroker.getName());
+                brokerStub.deleteTopic(publisher, topic, requestID);
+                log.info("Delete topic id: {} operation forwarded to broker {}", topic.getTopicId(), connectedBroker.getName());
+            } catch (Exception e) {
+                log.error("Failed to forward delete topic operation to broker {}", connectedBroker.getName(), e);
+            }
+        }
+        return true;
     }
 
     @Override
-    public void newSubscriberConnected(Subscriber subscriber) throws RemoteException {
+    public synchronized void newSubscriberConnected(Subscriber subscriber) throws RemoteException {
         log.info("New subscriber connected: {}", subscriber.getName());
 
         if (connectedSubscribers.stream().noneMatch(s -> s.getName().equals(subscriber.getName()))) {
@@ -299,22 +307,20 @@ public class BrokerImpl extends UnicastRemoteObject implements BrokerInterface {
 
 
     @Override
-    public Map<Topic, String> listAllTopics(List<String> processedBrokers) throws RemoteException {
-        String brokerName = broker.getName();
-
+    public Set<Topic> listAllTopics(String requestID) throws RemoteException {
         // check to avoid loop
-        if (processedBrokers.contains(brokerName)) {
-            log.info("Broker {} already processed this request, skipping.", brokerName);
-            return new HashMap<>();
+        synchronized (processedRequests) {
+            if (processedRequests.contains(requestID)) {
+                log.info("Broker {} already processed this request {}", broker.getName(), requestID);
+                return new HashSet<>();
+            }
+            processedRequests.add(requestID);
         }
 
-        processedBrokers.add(brokerName);
-        Map<Topic, String> allTopics = new HashMap<>();
-
-
-        for (Publisher connectedPublisher : connectedPublishers) {
-            for (Topic topic : connectedPublisher.getTopics()) {
-                allTopics.put(topic, connectedPublisher.getName());
+        Set<Topic> allTopics = new HashSet<>();
+        synchronized (connectedPublishers) {
+            for (Publisher connectedPublisher : connectedPublishers) {
+                allTopics.addAll(connectedPublisher.getTopics());
             }
         }
 
@@ -323,8 +329,8 @@ public class BrokerImpl extends UnicastRemoteObject implements BrokerInterface {
             try {
                 Registry registry = LocateRegistry.getRegistry(connectedBroker.getHost(), connectedBroker.getPort());
                 BrokerInterface brokerStub = (BrokerInterface) registry.lookup(connectedBroker.getName());
-                Map<Topic, String> otherBrokerTopics = brokerStub.listAllTopics(processedBrokers);
-                allTopics.putAll(otherBrokerTopics);
+                Set<Topic> otherBrokerTopics = brokerStub.listAllTopics(requestID);
+                allTopics.addAll(otherBrokerTopics);
             } catch (Exception e) {
                 log.error("Failed to forward Broker {}", connectedBroker.getName(), e);
             }
@@ -335,75 +341,91 @@ public class BrokerImpl extends UnicastRemoteObject implements BrokerInterface {
 
     @Override
     public boolean subscribeToTopic(Subscriber subscriber, String topicId) throws RemoteException {
-        Topic matchedTopic = null;
+        // list all topics
+        Set<Topic> allTopics = listAllTopics(System.currentTimeMillis() + broker.getName());
 
-        // Search for the matching Topic
-        outerLoop:
-        for (Publisher connectedPublisher : connectedPublishers) {
-            for (Topic topic : connectedPublisher.getTopics()) {
-                if (topic.getTopicId().equals(topicId)) {
-                    matchedTopic = topic;
-                    break outerLoop;  // Exit loops
-                }
-            }
-        }
+        /// Find topic
+        Topic searchTopic = new Topic(topicId);
+        Topic matchedTopic = allTopics.stream()
+                .filter(topic -> topic.equals(searchTopic))
+                .findFirst()
+                .orElse(null);
 
-        // If no matching Topic
+        // check matchedTopic
         if (matchedTopic == null) {
             log.warn("Topic {} not found. Subscription failed for subscriber {}", topicId, subscriber.getName());
             return false;
         }
 
-        // Check if the subscriber is already subscribed to the Topic
-        for (Subscriber existingSubscriber : connectedSubscribers) {
-            if (existingSubscriber.getName().equals(subscriber.getName())) {
-                if (existingSubscriber.getTopics().contains(matchedTopic)) {
-                    log.info("Subscriber {} is already subscribed to Topic {}", subscriber.getName(), matchedTopic.getTopicId());
-                    return false;
-                } else {
-                    existingSubscriber.addTopic(matchedTopic);
-                    log.info("Subscriber {} successfully subscribed to Topic {}", subscriber.getName(), matchedTopic.getTopicId());
-                    return true;
+        // check topic is subscribed by this subscriber
+        synchronized (connectedSubscribers){
+            for (Subscriber existingSubscriber : connectedSubscribers) {
+                if (existingSubscriber.getName().equals(subscriber.getName())) {
+                    if (existingSubscriber.getTopics().contains(matchedTopic)) {
+                        log.info("Subscriber {} is already subscribed to Topic {}", subscriber.getName(), matchedTopic.getTopicId());
+                        return false;
+                    } else {
+                        // add
+                        existingSubscriber.addTopic(matchedTopic);
+                        log.info("Subscriber {} successfully subscribed to Topic {}", subscriber.getName(), matchedTopic.getTopicId());
+                        return true;
+                    }
                 }
             }
         }
-        log.warn("No subscriber {}", subscriber.getName());
+
+        // not found Subscriber
+        log.warn("Subscriber {} not found in connectedSubscribers", subscriber.getName());
         return false;
     }
 
     @Override
     public Set<Topic> getSubscribedTopics(Subscriber subscriber) throws RemoteException {
-        for (Subscriber existingSubscriber : connectedSubscribers) {
-            if (existingSubscriber.getName().equals(subscriber.getName())){
+        synchronized (connectedSubscribers) {
+            Optional<Subscriber> existingSubscriber = connectedSubscribers.stream()
+                    .filter(sub -> sub.getName().equals(subscriber.getName()))
+                    .findFirst();
+
+            if (existingSubscriber.isPresent()) {
                 log.info("Subscriber {} is in this broker", subscriber.getName());
-                return existingSubscriber.getTopics();
+                return existingSubscriber.get().getTopics();
+            } else {
+                log.warn("Subscriber {} is not in this broker", subscriber.getName());
+                return new HashSet<>();
             }
         }
-        log.warn("Subscriber {} is not in this broker", subscriber.getName());
-        return new HashSet<>();
     }
 
     @Override
     public boolean unsubscribeFromTopic(Subscriber subscriber, String topicId) throws RemoteException {
-        for (Subscriber connectedSubscriber : connectedSubscribers) {
-            if (connectedSubscriber.getName().equals(subscriber.getName())) {
-                // Check if the subscriber is subscribed to the given topic
-                for (Topic topic : connectedSubscriber.getTopics()) {
-                    if (topic.getTopicId().equals(topicId)) {
-                        // Remove
-                        connectedSubscriber.removeTopic(topic);
-                        log.info("Subscriber {} successfully unsubscribed from Topic {}", subscriber.getName(), topicId);
-                        return true;
-                    }
+        synchronized (connectedSubscribers) {
+            // find matched subscriber
+            Optional<Subscriber> existingSubscriber = connectedSubscribers.stream()
+                    .filter(sub -> sub.getName().equals(subscriber.getName()))
+                    .findFirst();
+
+            if (existingSubscriber.isPresent()) {
+                Subscriber connectedSubscriber = existingSubscriber.get();
+
+                // find matched topic
+                Optional<Topic> subscribedTopic = connectedSubscriber.getTopics().stream()
+                        .filter(topic -> topic.getTopicId().equals(topicId))
+                        .findFirst();
+
+                if (subscribedTopic.isPresent()) {
+                    connectedSubscriber.removeTopic(subscribedTopic.get());
+                    log.info("Subscriber {} successfully unsubscribed from Topic {}", subscriber.getName(), topicId);
+                    return true;
+                } else {
+                    log.warn("Subscriber {} is not subscribed to Topic {}", subscriber.getName(), topicId);
+                    return false;
                 }
-                log.warn("Subscriber {} is not subscribed to Topic {}", subscriber.getName(), topicId);
+            } else {
+                // not found
+                log.warn("Subscriber {} not found during unsubscription from Topic {}", subscriber.getName(), topicId);
                 return false;
             }
         }
-
-        // Subscriber not found
-        log.warn("Subscriber {} not found during unsubscription from Topic {}", subscriber.getName(), topicId);
-        return false;
     }
 
     private void startHeartbeatCheck(Subscriber subscriber) {
@@ -417,7 +439,7 @@ public class BrokerImpl extends UnicastRemoteObject implements BrokerInterface {
 
                     // check
                     if (subscriberStub.isAlive()) {
-                        log.info("Subscriber {} is alive", subscriber.getName());
+                        //log.info("Subscriber {} is alive", subscriber.getName());
                     } else {
                         log.warn("Subscriber {} did not respond to heartbeat, removing...", subscriber.getName());
                         handleSubscriberCrash(subscriber);

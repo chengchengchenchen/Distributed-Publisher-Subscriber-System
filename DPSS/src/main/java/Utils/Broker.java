@@ -21,7 +21,7 @@ public class Broker implements Serializable {
     @Override
     public String toString() {
         return "BrokerInfo{" +
-                "brokerName='" + name + '\'' +
+                " brokerName='" + name + '\'' +
                 ", host='" + host + '\'' +
                 ", port=" + port +
                 '}';
