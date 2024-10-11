@@ -1,3 +1,7 @@
+/*
+Student Name: Jingcheng Qian
+Student ID: 1640690
+*/
 package Publisher;
 
 import java.rmi.Remote;

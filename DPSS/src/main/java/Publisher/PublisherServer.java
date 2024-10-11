@@ -1,3 +1,7 @@
+/*
+Student Name: Jingcheng Qian
+Student ID: 1640690
+*/
 package Publisher;
 
 import Directory.DirectoryService;
@@ -70,7 +74,7 @@ public class PublisherServer {
 
             // Command loop
             while (true) {
-                System.out.println("\nPlease select command: create, publish, show, delete, exit");
+                System.out.println("\nPlease select command: create, publish, show, delete");
                 System.out.print("Command: ");
                 String command = scanner.nextLine();
                 String[] parts = command.split(" ", 3);
@@ -94,6 +98,7 @@ public class PublisherServer {
                             log.info("Failed to create topic: " + topicName);
                         }
                         break;
+
                     case "publish":
                         if (parts.length < 3) {
                             System.out.println("Usage: publish {topic_id} {message}");
@@ -121,6 +126,7 @@ public class PublisherServer {
                             log.warn("Publisher does not own topic ID: " + topicId);
                         }
                         break;
+
                     case "show":
                         if (parts.length < 2) {
                             Map<Topic, Integer> allTopicDetails = brokerStub.getTopicDetails(publisher, System.currentTimeMillis() + publisher.getName());
@@ -155,6 +161,7 @@ public class PublisherServer {
                             }
                         }
                         break;
+
                     case "delete":
                         if (parts.length < 2) {
                             System.out.println("Usage: delete {topic_id}");
@@ -169,9 +176,7 @@ public class PublisherServer {
                             log.info("Failed to delete topic: " + topicId);
                         }
                         break;
-                    case "exit":
-                        log.info("Exiting...");
-                        return;
+
                     default:
                         log.info("Unknown command. Please try again.");
                         break;

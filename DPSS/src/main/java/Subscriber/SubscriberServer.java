@@ -1,3 +1,7 @@
+/*
+Student Name: Jingcheng Qian
+Student ID: 1640690
+*/
 package Subscriber;
 
 import Broker.BrokerInterface;
@@ -65,7 +69,7 @@ public class SubscriberServer {
 
             // Command loop
             while (true) {
-                System.out.println("\nPlease select command: list, sub, current, unsub, exit");
+                System.out.println("\nPlease select command: list, sub, current, unsub");
                 System.out.print("Command: ");
                 String command = scanner.nextLine();
                 String[] parts = command.split(" ", 2);
@@ -123,10 +127,6 @@ public class SubscriberServer {
                             log.warn("Failed to unsubscribe from topic: " + topicId);
                         }
                         break;
-
-                    case "exit":
-                        log.info("Exiting...");
-                        return;
 
                     default:
                         log.info("Unknown command. Please try again.");
